@@ -1,0 +1,109 @@
+////////////////////////////////////////////
+//////////// MAVEN PUBLISHING //////////////
+////////////////////////////////////////////
+apply plugin: 'maven-publish'
+
+publishing {
+    publications {
+        androidLibs(MavenPublication) {
+            groupId = GROUP
+            artifactId POM_ARTIFACT_ID
+            version = VERSION_NAME
+
+            artifact "${project.buildDir}/outputs/aar/${getArtifactFileName()}" //bundleRelease
+            println "artifact = " + "${project.buildDir}/outputs/aar/${getArtifactFileName()}"
+            List<String> embedList = new ArrayList<>();
+            Map<String, ResolvedDependency> depList = new LinkedHashMap<>()
+            Map<String, Dependency> thirdPartList = new LinkedHashMap<>()
+
+            //List all embedded dependencies
+            configurations.embedded.allDependencies.each {
+                def depName = String.format("%s:%s", it.group, it.name)
+                println "depName = " + depName
+                embedList.add(depName);
+            }
+
+            configurations.thirdPartDependency.allDependencies.each {
+                def depName = String.format("%s:%s", it.group, it.name)
+                println "thirdPartDependency depName = " + depName
+                thirdPartList.put(depName,it);
+            }
+
+//            configurations.thirdPartDependency.resolvedConfiguration.firstLevelModuleDependencies.each {
+//                ResolvedDependency dep ->
+//                    def depName = String.format("%s:%s", dep.moduleGroup, dep.moduleName)
+//                    println "thirdPartDependency depName = " + depName
+//                    if (!embedList.contains(depName) && !depList.containsKey(depName)) {
+//                        depList.put(depName, dep)
+//                    }
+//            }
+            //Collect all first level dependencies except embedded ones
+            configurations.compile.resolvedConfiguration.firstLevelModuleDependencies.each {
+                ResolvedDependency dep ->
+                    def depName = String.format("%s:%s", dep.moduleGroup, dep.moduleName)
+                    println "compile depName = " + depName
+                    if (!embedList.contains(depName) && !depList.containsKey(depName)) {
+                        depList.put(depName, dep)
+                    }
+            }
+
+            //Collect all second level dependencies of embedded ones
+            configurations.embedded.resolvedConfiguration.firstLevelModuleDependencies.each {
+                //Second Level Depenencies
+                it.children.each {
+                    ResolvedDependency dep ->
+                        def depName = String.format("%s:%s", dep.moduleGroup, dep.moduleName)
+                        println "embedded depName = " + depName
+                        if (!embedList.contains(depName) && !depList.containsKey(depName)) {
+                            depList.put(depName, dep)
+                        }
+                }
+            }
+
+            //The publication doesn't know about our dependencies, so we have to manually add them to the pom
+            pom.withXml {
+                def dependenciesNode = asNode().appendNode('dependencies')
+
+                depList.values().each {
+                    ResolvedDependency dep ->
+                        def hasGroup = dep.moduleGroup != null
+                        def hasName = (dep.moduleName != null && !"unspecified".equals(dep.moduleName) && !"".equals(dep.moduleVersion))
+                        def hasVersion = (dep.moduleVersion != null && !"".equals(dep.moduleVersion) && !"unspecified".equals(dep.moduleVersion))
+
+                        if (hasGroup && hasName && hasVersion) {
+                            def dependencyNode = dependenciesNode.appendNode('dependency')
+                            dependencyNode.appendNode('groupId', dep.moduleGroup)
+                            dependencyNode.appendNode('artifactId', dep.moduleName)
+                            dependencyNode.appendNode('version', dep.moduleVersion)
+                        }
+                }
+
+                thirdPartList.values().each {
+                    Dependency dep ->
+                        def hasGroup = dep.group != null
+                        def hasName = (dep.name != null && !"unspecified".equals(dep.name) && !"".equals(dep.version))
+                        def hasVersion = (dep.version != null && !"".equals(dep.version) && !"unspecified".equals(dep.version))
+
+                        if (hasGroup && hasName && hasVersion) {
+                            def dependencyNode = dependenciesNode.appendNode('dependency')
+                            dependencyNode.appendNode('groupId', dep.group)
+                            dependencyNode.appendNode('artifactId', dep.name)
+                            dependencyNode.appendNode('version', dep.version)
+                        }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            //远程maven仓库的地址如: http://127.0.0.1:8081/nexus/content/repositories/releases
+            url uri("/Users/dzhj/ilivegame/android/maven")
+            //远程仓库需要配置密钥
+            /*credentials {
+                username "admin"
+                password "haoadmin"
+            }*/
+        }
+    }
+}
+

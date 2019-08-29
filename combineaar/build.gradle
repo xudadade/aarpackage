@@ -1,0 +1,225 @@
+apply plugin: 'com.android.library'
+apply from: 'aar.gradle'
+
+apply from: 'publish.gradle'
+
+android {
+    compileSdkVersion "${compile_sdk_version}" as Integer
+    buildToolsVersion "${build_tools_version}"
+
+    defaultConfig {
+        minSdkVersion "${min_sdk_version}" as Integer
+        targetSdkVersion "${target_sdk_version}" as Integer
+        versionCode Integer.valueOf(System.env.BUILD_NUMBER ?: "1")
+        versionName "${version}"
+        javaCompileOptions {
+            annotationProcessorOptions {
+                it.argument('moduleName', project.getName())
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    libraryVariants.all { variant ->
+        variant.outputs.all { output ->
+            def outputFile = output.outputFile
+            println "outputFile.name = " + outputFile.name
+            if (outputFile != null && outputFile.name.endsWith('.aar')) {
+                def fileName = getArtifactFileName()
+                output.outputFileName = fileName
+                println "new output filename = " + fileName
+            }
+        }
+        variant.sourceSets.forEach { sourceProvider ->
+            sourceProvider.resDirectories.each { directory ->
+
+                println "resFile.name =" + directory.absolutePath
+            }
+        }
+    }
+}
+
+def getArtifactFileName() {
+    return "${POM_ARTIFACT_ID}-${VERSION_NAME}.aar"
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+
+    implementation "com.android.support:cardview-v7:${support_version}"
+    implementation "com.android.support:recyclerview-v7:${support_version}"
+    implementation "com.android.support.constraint:constraint-layout:${constraint_layout_version}"
+    implementation 'com.android.support:design:27.1.1'
+    implementation "com.appsflyer:af-android-sdk:${apps_flyer_version}"
+    implementation "com.android.installreferrer:installreferrer:${installreferrer_version}"
+
+//--------------------------------------------------------------
+
+    thirdPartDependency "com.androidkun:XTabLayout:1.1.4"
+    thirdPartDependency "com.google.android:flexbox:1.0.0"
+
+    thirdPartDependency "com.scwang.smartrefresh:SmartRefreshLayout:1.0.4-7"
+    thirdPartDependency "com.facebook.android:facebook-android-sdk:4.39.0"
+
+    thirdPartDependency "com.appsflyer:af-android-sdk:${apps_flyer_version}"
+    thirdPartDependency "com.android.installreferrer:installreferrer:${installreferrer_version}"
+    thirdPartDependency "com.google.firebase:firebase-core:16.0.8"
+
+    thirdPartDependency "com.alibaba:arouter-api:${arouter_api_version}"
+    thirdPartDependency "com.alibaba:arouter-compiler:${arouter_compiler_version}"
+    thirdPartDependency "com.alibaba:arouter-annotation:${arouter_annotation_version}"
+    thirdPartDependency "com.aliyun.dpa:oss-android-sdk:2.9.0"
+
+    thirdPartDependency "jp.wasabeef:glide-transformations:4.0.0"
+    thirdPartDependency "com.github.bumptech.glide:glide:$glide_version"
+
+    thirdPartDependency "android.arch.lifecycle:extensions:${arch_lifecycle_version}"
+//----------------------------------------------------------
+
+    resourceFilter "com.google.android.gms:play-services-cast:11.4.2"
+    resourceFilter "com.google.android.gms:play-services-cast-framework:11.4.2"
+    resourceFilter "com.android.support:appcompat-v7:${support_version}"
+    resourceFilter "com.trello.rxlifecycle2:rxlifecycle-components:2.0.1"
+    resourceFilter "com.android.support:design:27.1.1"
+    resourceFilter "com.android.support:appcompat-v7:28.0.0"
+
+    testImplementation 'junit:junit:4.12'
+    androidTestImplementation 'com.android.support.test:runner:1.0.2'
+    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
+    embedded project(path:":framework", configuration: 'default')
+    embedded project(path:":login", configuration: 'default')
+    embedded project(path:":home", configuration: 'default')
+    embedded project(path:":personalcenter", configuration: 'default')
+    embedded project(path:":liveroom", configuration: 'default')
+    embedded project(path:":settings", configuration: 'default')
+    embedded project(path:":search", configuration: 'default')
+    embedded project(path:":follow", configuration: 'default')
+    embedded project(path:":libZing", configuration: 'default')
+    embedded project(path:":hiido", configuration: 'default')
+    embedded project(path:":push", configuration: 'default')
+    embedded project(path:":schemaLaunch", configuration: 'default')
+    embedded project(path:":revenui", configuration: 'default')
+    embedded project(path:":imageloader", configuration: 'default')
+    embedded project(path:":im", configuration: 'default')
+    embedded project(path:":game", configuration: 'default')
+    //embedded project(path:":leakcanary", configuration: 'default')
+    embedded project(path:":framework-api", configuration: 'default')
+    embedded project(path:":login-api", configuration: 'default')
+    embedded project(path:":home-api", configuration: 'default')
+    embedded project(path:":personalcenter-api", configuration: 'default')
+    embedded project(path:":liveroom-api", configuration: 'default')
+    embedded project(path:":settings-api", configuration: 'default')
+    embedded project(path:":search-api", configuration: 'default')
+    embedded project(path:":follow-api", configuration: 'default')
+    embedded project(path:":libZing-api", configuration: 'default')
+    embedded project(path:":hiido-api", configuration: 'default')
+    embedded project(path:":push-api", configuration: 'default')
+    embedded project(path:":schemaLaunch-api", configuration: 'default')
+    embedded project(path:":revenui-api", configuration: 'default')
+    embedded project(path:":imageloader-api", configuration: 'default')
+    embedded project(path:":im-api", configuration: 'default')
+    embedded project(path:":game-api", configuration: 'default')
+    embedded project(path:":initlarary", configuration: 'default')
+    embedded project(path:":initlarary-api", configuration: 'default')
+
+
+
+    //embedded "com.duowan.qa.ybug:ybug:$qaybugversion"
+    embedded "com.yy.android.yypushsdk:yypush:${push_sdk_version}"
+    embedded "com.yy.cim:cim:$cimsdk_version"
+    embedded "com.yy.cim:conversation:$cimsdk_version"
+    embedded "com.yy.libyyrt:nonet:${libyyrt_game_version}"
+    embedded "com.yy.android.yylivesdk4cloud:yylivesdk4cloud-audiovideo:${yylivesdk4cloud_version}"
+    embedded "com.yy.mobile.architecture:c4:${c4_version}"
+    embedded "com.yy.tools:simpleui:${simpleui_version}"
+    embedded "overseasignal.yy.com.library:overseasignal:${signal_sdk_version}"
+    embedded "tv.hamo:livingroom-api:${livingroom_version}"
+    embedded "tv.hamo:livingroom:${livingroom_version}"
+
+
+
+    embedded "tv.athena:annotation:${architecture_version}"
+    embedded "tv.athena:core:${architecture_version}"
+    embedded "tv.athena:utils:${architecture_version}"
+    embedded "tv.athena:utils-mini:${architecture_version}"
+    embedded "tv.athena:components:${architecture_version}"
+    embedded "tv.athena:klog:${architecture_version}"
+    embedded "tv.athena:platform:${architecture_version}"
+    embedded "tv.athena:hiido:${architecture_version}"
+    embedded "tv.athena:service:${architecture_service_version}"
+    embedded "tv.athena:http:${architecture_version}"
+    embedded "tv.athena:crash:${architecture_version}"
+    embedded "tv.athena:filetransfer:${architecture_version}"
+    embedded "tv.athena:httpadapter-rxjava2:${architecture_version}"
+    embedded "tv.athena:imagetransformation:${architecture_version}"
+    embedded "tv.athena:auth:${architecture_auth_version}"
+    embedded "tv.athena:thirdparty:${architecture_thirdparty_version}"
+    embedded "tv.athena:thirdparty-google:${architecture_thirdparty_google_version}"
+    embedded "tv.athena:thirdparty-facebook:${architecture_thirdparty_version}"
+    embedded "tv.athena:thirdparty-twitter:${architecture_thirdparty_version}"
+    embedded "tv.athena:thirdparty-vk:${architecture_thirdparty_version}"
+    embedded "tv.athena:thirdparty-instagram:${architecture_thirdparty_version}"
+    embedded "tv.athena:share:${architecture_share_version}"
+    embedded "tv.athena:share-facebook:${architecture_share_version}"
+    embedded "tv.athena:share-twitter:${architecture_share_version}"
+    embedded "tv.athena:share-vk:${architecture_share_version}"
+    embedded "tv.athena:share-instagram:${architecture_share_version}"
+    embedded "tv.athena:share-whatsapp:${architecture_share_version}"
+    embedded "tv.athena:revenue:${architecture_revenue_version}"
+    embedded "tv.athena:feedback:${architecture_feedback_version}"
+    embedded "tv.athena:widget:${widget_version}"
+
+
+    embedded "tv.athena:service-api:${architecture_service_version}"
+    embedded "tv.athena:hiido-api:${architecture_version}"
+    embedded "tv.athena:auth-api:${architecture_auth_version}"
+    embedded "tv.athena:klog-api:${architecture_version}"
+    embedded "tv.athena:hiido-api:${architecture_version}"
+    embedded "tv.athena:service-api:${architecture_service_version}"
+    embedded "tv.athena:crash-api:${architecture_version}"
+    embedded "tv.athena:http-api:${architecture_version}"
+    embedded "tv.athena:basehttp-api:${architecture_version}"
+    embedded "tv.athena:filetransfer-api:${architecture_version}"
+    embedded "tv.athena:feedback-api:${architecture_feedback_version}"
+    embedded "tv.athena:revenue-api:${architecture_revenue_version}"
+
+    embedded "tv.athena:share-api:${architecture_share_version}"
+    embedded "tv.athena:thirdparty-api:${architecture_thirdparty_version}"
+    embedded "tv.athena:thirdpartybase-api:${architecture_thirdparty_version}"
+    embedded "tv.athena:sharebase-api:${architecture_thirdparty_version}"
+
+
+
+    embedded "com.yy.android.yyvideolib:yyvideolib:200.0.14-snapshot.21.5"
+    embedded "com.yy.android.argo:argo:1.0.4"
+    embedded "com.yy.android.yyvideoplayer:yyvideoplayer:200.0.10"
+    embedded "com.yy.android.stmobile:stmobileAPI:3.1.1"
+    embedded "com.yy.android.medialibrary:transsdk-static:1.7.53-snapshot2"
+    embedded "com.yy.platform:yyservicesdk:2.8.10"
+    embedded "com.yy.android.gslbsdk:gslb:1.0.40-intl"
+    embedded "com.yy.android.medialibrary:audioengine-static:10.6.3"
+    embedded "com.yy.perf:perfreportsdk:1.0.9"
+    embedded "com.yy.sdk.crashreport:crashreport:2.2.15"
+    embedded "com.yy.platform:yyloginlitesdk:2.3.10"
+    embedded "tv.athena:thirdparty-http:1.6.3"
+    embedded "tv.athena:thirdparty-http-api:1.6.3"
+    embedded "tv.athena:thirdparty-web:1.6.3"
+    embedded "com.yy.mobile.framework:revenuesdk-gift:2.4.0"
+    embedded "com.yy.mobile.framework:revenuesdk-core:2.4.0"
+    embedded "com.yy.mobile.framework:revenuesdk-payapi:2.4.0"
+    embedded "com.yy.mobile.framework:revenuesdk-baseapi:2.4.0"
+    embedded "com.yy.android.medialibrary:audiodsp-static:1.2.9"
+    embedded "com.yy.android.medialibrary:audiocodec-static:10.1.32"
+    embedded "com.yy.sdk.crashreport:caton:2.2.15"
+    embedded "com.duowan.android.DeviceIdentifier:deviceidentifier:100.0.5"
+    embedded "com.yy.mobile.framework:revenuesdk-payservice:2.4.0"
+    embedded "com.yy.mobile.framework:revenuesdk-gppay:2.4.0"
+    embedded "com.yy.android.orangefilter:orangefilter_android:4.4.0"
+    embedded "com.yy.android.hiidostatsdk:hiido_statis_abroad:3.4.53"
+}

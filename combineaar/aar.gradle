@@ -1,0 +1,577 @@
+import com.android.annotations.NonNull
+import com.android.manifmerger.ManifestMerger2
+import com.android.manifmerger.MergingReport
+import com.android.manifmerger.XmlDocument
+import com.android.utils.ILogger
+import com.google.common.base.Charsets
+import com.google.common.io.Files
+
+
+
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.2.0'
+    }
+}
+
+configurations {
+    embedded
+
+    resourceFilter
+
+    thirdPartDependency
+}
+
+dependencies {
+    implementation configurations.embedded
+    implementation configurations.resourceFilter
+
+    implementation configurations.thirdPartDependency
+}
+
+ext.embeddedJars = new ArrayList()
+ext.embeddedAarDirs = new ArrayList()
+ext.embeddedAarFiles = new ArrayList<ResolvedArtifact>()
+ext.embeddedRClasses = new ArrayList<>()
+
+
+ext.build_dir = buildDir.path.replace(File.separator,'/')
+
+println "the buildDir path =" + buildDir.path
+ext.root_dir = project.rootDir.absolutePath.replace(File.separator,'/')
+println "the rootDir path =" + project.rootDir.absolutePath
+ext.project_dir = project.projectDir.path.replace(File.separator,'/')
+println "the project_dir = $project_dir"
+
+ext.the_r_bundle_dir = "$project_dir/src/main/assets/R.txt"
+ext.exploded_aar_dir = "$build_dir/intermediates/exploded-aar"
+ext.origin_aar_dir = "$build_dir/intermediates/packaged-classes"
+ext.classs_release_dir = "$build_dir/intermediates/classes/release"
+ext.bundle_release_dir = "$build_dir/intermediates/bundles/unzip"
+ext.manifest_aaapt_dir = "$build_dir/intermediates/manifests/aapt/release"
+ext.generated_rsrc_dir = "$build_dir/generated/not_namespaced_r_class_sources/release/generateReleaseRFile/out";
+
+
+ext.base_r2x_dir = "$build_dir/aar/aar"
+
+
+afterEvaluate {
+    getAndroidSupportResourcesId()
+    def dependencies = new ArrayList(configurations.embedded.resolvedConfiguration.firstLevelModuleDependencies)
+    dependencies.reverseEach {
+       def  aarPath = "${exploded_aar_dir}/${it.moduleGroup}/${it.moduleName}/${it.moduleVersion}"
+        println "aarPath = " + aarPath
+        println "module Artifacts =" + it.moduleArtifacts
+        it.moduleArtifacts.each {
+            artifact ->
+                print "artifact ="+ artifact
+                print "artifact.type =" + artifact.type
+
+                if(artifact.type == 'aar') {
+                    if (!embeddedAarFiles.contains(artifact)) {
+                        embeddedAarFiles.add(artifact)
+                    }
+
+                    println "embeddedAarDires =" + embeddedAarDirs
+                    if (!embeddedAarDirs.contains(aarPath)) {
+                        if (artifact.file.isFile()) {
+                            println "artifact.file =" + artifact.file
+                            copy {
+                                from zipTree(artifact.file)
+                                into aarPath
+                            }
+                        }
+                        embeddedAarDirs.add(aarPath)
+                    }
+                } else if(artifact.type == 'jar') {
+                    def artifactPath = artifact.file
+                    println "jar artifactPath.file =" + artifactPath
+                    if(!embeddedJars.contains(artifactPath)) {
+                        embeddedJars.add(artifactPath)
+                    }
+                } else {
+                    throw new Exception("unHandled Artifact of type ${artifact.type}")
+                }
+        }
+
+
+    }
+
+    if(dependencies.size() > 0) {
+        //合并Assets文件
+        generateReleaseAssets.dependsOn embeddedAssets
+        embeddedAssets.dependsOn compileReleaseShaders
+
+        //合并资源文件
+        generateReleaseResources.dependsOn embeddedLibraryResources
+        embeddedLibraryResources.dependsOn compileReleaseShaders
+
+        // 合并JniLibs？？？？？
+        bundleReleaseAar.dependsOn embeddedJniLibs
+        embeddedJniLibs.dependsOn transformNativeLibsWithSyncJniLibsForRelease
+
+        // 合并Manifests
+        bundleReleaseAar.dependsOn embeddedManifests
+        embeddedManifests.dependsOn processReleaseManifest
+
+        // Merge proguard files
+        embeddedLibraryResources.dependsOn embeddedProguard
+        embeddedProguard.dependsOn compileReleaseShaders
+
+        // Generate R.java files
+        compileReleaseJavaWithJavac.dependsOn generateRJava
+        generateRJava.dependsOn generateReleaseRFile
+
+
+        // Bundle the java classes
+        bundleReleaseAar.dependsOn embeddedthirdpartAars
+        embeddedthirdpartAars.dependsOn embedRClass
+
+
+        //合并R文件
+        embedRClass.dependsOn collectRClass
+        collectRClass.dependsOn compileReleaseJavaWithJavac
+
+
+    }
+}
+
+ext.resourceAndroidDirs = new ArrayList()
+ext.android_res_expload_aar_dir  = "$build_dir/intermediates/bundles/res"
+
+def getAndroidSupportResourcesId() {
+    def dependencies = new ArrayList(configurations.resourceFilter.resolvedConfiguration.firstLevelModuleDependencies)
+    dependencies.reverseEach {
+        def  aarPath = "${android_res_expload_aar_dir}/${it.moduleGroup}/${it.moduleName}/${it.moduleVersion}"
+        println "source = " + aarPath
+        println "source module Artifacts =" + it.moduleArtifacts
+        it.moduleArtifacts.each {
+            artifact ->
+                print "source artifact ="+ artifact
+                print "source artifact.type =" + artifact.type
+
+                if(artifact.type == 'aar') {
+                    println "resourceAndroidDirs =" + resourceAndroidDirs
+                    if (!resourceAndroidDirs.contains(aarPath)) {
+                        if (artifact.file.isFile()) {
+                            println "artifact.file =" + artifact.file
+                            copy {
+                                from zipTree(artifact.file)
+                                into aarPath
+                            }
+                        }
+                        resourceAndroidDirs.add(aarPath)
+                    }
+                }
+        }
+    }
+    getAndroidResourceMap()
+}
+
+ext.androidResMaps = new ConfigObject()
+def getAndroidResourceMap() {
+    def rTxt = file("$the_r_bundle_dir")
+    if (rTxt.exists()) {
+        rTxt.eachLine {
+            line ->
+                def (type, subclass, name, value) = line.tokenize(' ')
+                androidResMaps[subclass].putAt(name, type)
+        }
+        println "androidResMaps size = " + androidResMaps.size()
+    }
+}
+
+
+task embeddedAssets  {
+        println "****************************Task :embeddedAssets*************************"
+
+    doLast {
+        embeddedAarDirs.each { aarPath ->
+            // Merge Assets
+            println "aarPath assets = " + "$aarPath/assets"
+            if(!aarPath.contains("yyvideoplayer")) {
+                android.sourceSets.main.assets.srcDirs += file("$aarPath/assets")
+            }
+        }
+    }
+}
+
+
+/**
+ * For some reason, adding to the jniLibs source set does not work. So we simply copy all files.
+ */
+ext.jnilibs_release_dir = "$build_dir/intermediates/jniLibs/release"
+//ext.jnilibs_release_dir = "$build_dir/intermediates/jni"
+task embeddedJniLibs  {
+    println "****************************Task :embeddedJniLibs*************************"
+    doLast{
+        embeddedAarDirs.each { aarPath ->
+            println "======= Copying JNI from $aarPath/jni"
+            // Copy JNI Folders
+            copy {
+                from fileTree(dir: "$aarPath/jni")
+                into file("$jnilibs_release_dir")
+            }
+        }
+    }
+}
+
+ext.originManifest_dir = "$build_dir/intermediates/merged_manifests/release/processReleaseManifest/merged"
+
+task embeddedManifests  {
+    println "****************************Task :embeddedManifests*************************"
+    doLast{
+        ILogger mLogger = new MiLogger()
+        List libraryManifests = new ArrayList<>()
+
+        embeddedAarDirs.each { aarPath ->
+            File dependencyManifest = file("$aarPath/AndroidManifest.xml")
+              println "dependencyManifest path = $aarPath/AndroidManifest.xml"
+            if (!libraryManifests.contains(aarPath) && dependencyManifest.exists()) {
+                libraryManifests.add(dependencyManifest)
+            }
+        }
+
+        File reportFile = file("${build_dir}/embedManifestReport.txt")
+
+        File origManifest = file("$originManifest_dir/AndroidManifest.xml")
+        File copyManifest = file("$bundle_release_dir/AndroidManifest.orig.xml")
+        File aaptManifest = file("$manifest_aaapt_dir/AndroidManifest.xml")
+
+        if (!origManifest.exists()) {
+            origManifest = file("./src/main/AndroidManifest.xml")
+        }
+
+        if (!origManifest.exists()) {
+            return;
+        }
+
+        copy {
+            from origManifest.parentFile
+            into copyManifest.parentFile
+            include origManifest.name
+            rename(origManifest.name, copyManifest.name)
+        }
+
+        try {
+            ManifestMerger2.Invoker manifestMergerInvoker = ManifestMerger2.newMerger(copyManifest, mLogger, ManifestMerger2.MergeType.APPLICATION)
+
+            manifestMergerInvoker.addLibraryManifests(libraryManifests.toArray(new File[libraryManifests.size()]))
+
+            // manifestMergerInvoker.setPlaceHolderValues(placeHolders)
+            manifestMergerInvoker.setMergeReportFile(reportFile);
+
+            MergingReport mergingReport = manifestMergerInvoker.merge();
+
+            mLogger.info("Merging result:" + mergingReport.getResult());
+            MergingReport.Result result = mergingReport.getResult();
+            switch (result) {
+                case MergingReport.Result.WARNING:
+                    mergingReport.log(mLogger);
+            // fall through since these are just warnings.
+                case MergingReport.Result.SUCCESS:
+                    XmlDocument xmlDocument = mergingReport.getMergedXmlDocument(MergingReport.MergedManifestKind.MERGED);
+                    try {
+                        String annotatedDocument = mergingReport.getActions().blame(xmlDocument);
+                        mLogger.verbose(annotatedDocument);
+                    } catch (Exception e) {
+                        mLogger.error(e, "cannot print resulting xml");
+                    }
+                    save(xmlDocument, origManifest);
+                    mLogger.info("Merged manifest saved to " + origManifest);
+                    if (aaptManifest.exists()) {
+                        //new PlaceholderEncoder().visit(xmlDocument);
+                        save(xmlDocument, aaptManifest);
+                        mLogger.info("Merged aapt safe manifest saved to " + aaptManifest);
+                    }
+                    break;
+                case MergingReport.Result.ERROR:
+                    mergingReport.log(mLogger);
+                    throw new RuntimeException(mergingReport.getReportString());
+                default:
+                    throw new RuntimeException("Unhandled result type : " + mergingReport.getResult());
+            }
+        } catch (RuntimeException e) {
+            // Unacceptable error
+            e.printStackTrace()
+            throw new RuntimeException(e);
+        }
+    }
+}
+
+private void save(XmlDocument xmlDocument, File out) {
+    try {
+        Files.write(xmlDocument.prettyPrint(), out, Charsets.UTF_8);
+    } catch (IOException e) {
+        throw new RuntimeException(e);
+    }
+}
+
+task embeddedLibraryResources  {
+    println "****************************Task :embeddedLibraryResources*************************"
+    doLast {
+
+        println "packageReleaseResources" + packageReleaseResources.class.declaredFields
+        println "packageReleaseResources" + packageReleaseResources.class.declaredMethods
+
+        embeddedAarDirs.each { aarPath ->
+            // Merge Assets
+            if(!aarPath.contains('yylivesdk4cloud')){
+                println "aarPath assets = " + "$aarPath/res"
+                android.sourceSets.main.res.srcDirs += file("$aarPath/res")
+            }
+        }
+        //packageReleaseResources.class.getField("__processedInputs__").setAccessible(true)
+        //packageReleaseResources.class.getMethod("resSetSupplier").setAccessible(true)
+        //resSetSupplier
+//        def oldInputResourceSet = packageReleaseResources.processedInputs
+//        packageReleaseResources.conventionMapping.map("processedInputs") {
+//            getMergedInputResourceSets(oldInputResourceSet)
+//        }
+    }
+}
+
+
+task embeddedProguard  {
+    println "****************************Task :embeddedProguard*************************"
+    doLast{
+        def proguardRelease = file("$bundle_release_dir/proguard.txt")
+        embeddedAarDirs.each { aarPath ->
+            try {
+                println 'embeddedProguard aarPath = ' + aarPath
+                def proguardLibFile = file("$aarPath/proguard.txt")
+                if (proguardLibFile.exists()) {
+                    if(!proguardRelease.exists()){
+                        mkdir "$bundle_release_dir"
+                        copy {
+                            from "$aarPath/proguard.txt"
+                            into "$bundle_release_dir/proguard.txt"
+                        }
+                    } else {
+                        proguardRelease.append("\n" + proguardLibFile.text)
+                    }
+
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                //throw e;
+            }
+        }
+    }
+}
+
+
+task generateRJava  {
+    println "****************************Task :generateRJava*************************"
+
+    doLast {
+        // Now generate the R.java file for each embedded dependency
+        def mainManifestFile = android.sourceSets.main.manifest.srcFile;
+        def libPackageName = "";
+
+        if (mainManifestFile.exists()) {
+
+            libPackageName = new XmlParser().parse(mainManifestFile).@package
+        }
+
+        embeddedAarDirs.each { aarPath ->
+
+            def manifestFile = file("$aarPath/AndroidManifest.xml");
+            if (!manifestFile.exists()) {
+                manifestFile = file("./src/main/AndroidManifest.xml");
+            }
+
+            if (manifestFile.exists()) {
+                def aarManifest = new XmlParser().parse(manifestFile);
+                def aarPackageName = aarManifest.@package
+
+                String packagePath = aarPackageName.replace('.', '/')
+
+                // Generate the R.java file and map to current project's R.java
+                // This will recreate the class file
+                def rTxt = file("$aarPath/R.txt")
+                def rMap = new ConfigObject()
+
+                if (rTxt.exists()) {
+                    rTxt.eachLine {
+                        line ->
+                            //noinspection GroovyUnusedAssignment
+                            def (type, subclass, name, value) = line.tokenize(' ')
+                            rMap[subclass].putAt(name, type)
+                    }
+                }
+
+                def sb = "package $aarPackageName;" << '\n' << '\n'
+                sb << 'public final class R {' << '\n'
+
+                rMap.each {
+                    subclass, values ->
+                        sb << "  public static final class $subclass {" << '\n'
+                        values.each {
+                            name, type ->
+                                if(filterSystemSymbol(subclass,name,type)) {
+                                    println "name = " + name
+                                } else {
+                                    sb << "    public static $type $name = ${libPackageName}.R.${subclass}.${name};" << '\n'
+                                }
+                        }
+                        sb << "    }" << '\n'
+                }
+
+                sb << '}' << '\n'
+
+                mkdir("$generated_rsrc_dir/$packagePath")
+                file("$generated_rsrc_dir/$packagePath/R.java").write(sb.toString())
+                embeddedRClasses += "$packagePath/R.class"
+                embeddedRClasses += "$packagePath/R\$*.class"
+                println "packagePath = " + "$packagePath/R.class"
+
+            }
+
+        }
+
+
+
+    }
+}
+
+
+def filterSystemSymbol(subclass,name,type) {
+    try {
+        androidResMaps.each {
+            tempSubclass,values ->
+                values.each {
+                    tempName,tempType ->
+                        if(subclass == tempSubclass && name == tempName && type == tempType) {
+                            println "the same = $tempSubclass, $tempName, $tempType"
+                            throw new Exception("return from closure")
+                            //return true
+                        }
+                }
+        }
+    }catch(Exception e) {
+        println "e = " + e.getMessage()
+        return false
+    }
+    return true
+   // return name in ["tooltip", "tooltip_enter", "tooltip_exit","leak_canary_icon","leak_canary_notification","leak_canary_toast_background","leak_canary_LeakCanary_Base","leak_canary_Theme_Transparent"]
+}
+
+
+ext.module_class_release_dir = "$build_dir/intermediates/javac/release/compileReleaseJavaWithJavac/classes"
+ext.module_jar_release_dir = "$build_dir/intermediates/packaged-classes/release"
+task collectRClass  {
+    println "COLLECTRCLASS"
+    doLast {
+        delete base_r2x_dir
+        mkdir base_r2x_dir
+
+        copy {
+            println "collectRClass embeddedRClasses = " + embeddedRClasses
+            from module_class_release_dir
+            include embeddedRClasses
+            into base_r2x_dir
+        }
+    }
+
+}
+
+task embedRClass(type: org.gradle.jvm.tasks.Jar, dependsOn: collectRClass) {
+    println "EMBED R CLASS"
+       baseName "embedr"
+       destinationDir file("$bundle_release_dir/libs")
+       from base_r2x_dir
+       println "base_r2x_dir = " + base_r2x_dir
+}
+
+
+task embeddedthirdpartAars(dependsOn: embedRClass)  {
+    println "****************************Task :embeddedthirdpartAars*************************"
+    doLast {
+        embeddedAarDirs.each { aarPath ->
+
+            // Explode all classes.jar files to classes so that they can be proguarded
+            def jar_dir = "$aarPath"
+            println "aarPath this = " + "$aarPath"
+
+            if (embeddedAarFiles.size() < 0) {
+                println "embeddedAarFiles size = " + embeddedAarFiles.size()
+
+                embeddedAarFiles.each {
+                    artifact ->
+                        FileTree aarFileTree = zipTree(artifact.file.getAbsolutePath());
+
+                        def aarFile = aarFileTree.files.find { it.name.contains("classes.jar") }
+
+                        copy {
+                            from zipTree(aarFile)
+                            into module_class_release_dir
+                        }
+                }
+
+            } else {
+
+                println jar_dir
+                println module_class_release_dir
+                println module_jar_release_dir
+
+                copy {
+                    from zipTree(jar_dir + "/classes.jar")
+                    into module_class_release_dir
+                }
+            }
+
+            // Copy all additional jar files to bundle lib
+            FileTree jars = fileTree(dir: jar_dir, include: '*.jar', exclude: 'classes.jar')
+            jars += fileTree(dir: jar_dir + "/libs", include: '*.jar')
+            jars += fileTree(dir: "$aarPath/libs", include: '*.jar')
+
+            copy {
+
+                from jars
+                into file("$module_jar_release_dir/libs")
+            }
+
+            // Copy all embedded jar files to bundle lib
+            println embeddedJars
+            copy {
+                from embeddedJars
+                into file("$bundle_release_dir/libs")
+            }
+        }
+    }
+}
+
+class MiLogger implements ILogger {
+
+    @Override
+    void error(
+            @com.android.annotations.Nullable Throwable t,
+            @com.android.annotations.Nullable String msgFormat, Object... args) {
+        System.err.println(String.format("========== ERROR : " + msgFormat, args))
+        if (t) t.printStackTrace(System.err)
+    }
+
+    @Override
+    void warning(@NonNull String msgFormat, Object... args) {
+        System.err.println(String.format("========== WARNING : " + msgFormat, args))
+    }
+
+    @Override
+    void info(@NonNull String msgFormat, Object... args) {
+        System.out.println(String.format("========== INFO : " + msgFormat, args))
+    }
+
+    @Override
+    void verbose(@NonNull String msgFormat, Object... args) {
+        // System.out.println(String.format("========== DEBUG : " + msgFormat, args))
+    }
+}
+
+
