@@ -107,38 +107,27 @@ afterEvaluate {
         //合并Assets文件
         generateReleaseAssets.dependsOn embeddedAssets
         embeddedAssets.dependsOn compileReleaseShaders
-
         //合并资源文件
         generateReleaseResources.dependsOn embeddedLibraryResources
         embeddedLibraryResources.dependsOn compileReleaseShaders
-
-        // 合并JniLibs？？？？？
+        // 合并JniLibs
         bundleReleaseAar.dependsOn embeddedJniLibs
         embeddedJniLibs.dependsOn transformNativeLibsWithSyncJniLibsForRelease
-
         // 合并Manifests
         bundleReleaseAar.dependsOn embeddedManifests
         embeddedManifests.dependsOn processReleaseManifest
-
-        // Merge proguard files
+        // 合并 proguard files
         embeddedLibraryResources.dependsOn embeddedProguard
         embeddedProguard.dependsOn compileReleaseShaders
-
-        // Generate R.java files
+        // 生成 R.java files
         compileReleaseJavaWithJavac.dependsOn generateRJava
         generateRJava.dependsOn generateReleaseRFile
-
-
-        // Bundle the java classes
+        // 打包java classes
         bundleReleaseAar.dependsOn embeddedthirdpartAars
         embeddedthirdpartAars.dependsOn embedRClass
-
-
         //合并R文件
         embedRClass.dependsOn collectRClass
         collectRClass.dependsOn compileReleaseJavaWithJavac
-
-
     }
 }
 
