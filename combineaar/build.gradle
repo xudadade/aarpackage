@@ -3,6 +3,7 @@ apply from: 'aar.gradle'
 
 apply from: 'publish.gradle'
 
+
 android {
     compileSdkVersion "${compile_sdk_version}" as Integer
     buildToolsVersion "${build_tools_version}"
